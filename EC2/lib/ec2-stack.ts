@@ -45,7 +45,7 @@ export class MyEc2Stack extends cdk.Stack {
                 generation: ec2.AmazonLinuxGeneration.AMAZON_LINUX_2
             }),
             instanceType: ec2.InstanceType.of(ec2.InstanceClass.T2, ec2.InstanceSize.MICRO),
-            keyName: 'markus',
+            keyName: 'Chris2',
             securityGroup: securityGroup,
             role: role,
             userData: ec2.UserData.custom(`#!/bin/bash
