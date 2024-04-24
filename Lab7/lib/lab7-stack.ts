@@ -1,14 +1,15 @@
-import * as cdk from '@aws-cdk/core';
-import * as ec2 from '@aws-cdk/aws-ec2';
+import * as cdk from 'aws-cdk-lib';
+import * as ec2 from 'aws-cdk-lib/aws-ec2';
+import { Construct } from 'constructs';
 
-export class MyVpcStack extends cdk.Stack {
-  constructor(scope: cdk.Construct, id: string, props?: cdk.StackProps) {
+export class Lab7Stack extends cdk.Stack {
+  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
     // Create a new VPC
-    const vpc = new ec2.Vpc(this, 'MyVpc', {
+    const vpc = new ec2.Vpc(this, 'Lab7Vpc', {
       cidr: '10.0.0.0/16',
-      natGateways: 1, // Create a single NAT Gateway
+      natGatewayProvider: ec2.NatProvider.gateway(), // Use NatProvider to create NAT gateways
       subnetConfiguration: [
         {
           cidrMask: 24,
@@ -18,21 +19,14 @@ export class MyVpcStack extends cdk.Stack {
         {
           cidrMask: 24,
           name: 'PrivateApp',
-          subnetType: ec2.SubnetType.PRIVATE,
+          subnetType: ec2.SubnetType.PRIVATE_ISOLATED, // Use ec2.SubnetType.PRIVATE_ISOLATED for private subnets
         },
         {
           cidrMask: 24,
           name: 'PrivateDB',
-          subnetType: ec2.SubnetType.PRIVATE,
+          subnetType: ec2.SubnetType.PRIVATE_ISOLATED, // Use ec2.SubnetType.PRIVATE_ISOLATED for private subnets
         },
       ],
-    });
-
-    // Create an Internet Gateway and attach it to the VPC
-    const internetGateway = new ec2.CfnInternetGateway(this, 'InternetGateway');
-    const gatewayAttachment = new ec2.CfnVPCGatewayAttachment(this, 'GatewayAttachment', {
-      vpcId: vpc.vpcId,
-      internetGatewayId: internetGateway.ref,
     });
 
     // Create a route table for public subnets
@@ -53,14 +47,24 @@ export class MyVpcStack extends cdk.Stack {
       vpcId: vpc.vpcId,
     });
 
-    // Add a route to the NAT Gateway for each private subnet
-    vpc.privateSubnets.forEach((subnet, index) => {
-      new ec2.CfnRoute(this, `PrivateRoute${index}`, {
-        routeTableId: privateRouteTable.ref,
-        destinationCidrBlock: '0.0.0.0/0',
-        natGatewayId: vpc.natGateways[0].natGatewayId,
-      });
+    // Create an Elastic IP address
+    const eip = new ec2.CfnEIP(this, 'EIP');
 
+    // Create a NAT gateway in the public subnet
+    const natGateway = new ec2.CfnNatGateway(this, 'NATGateway', {
+      subnetId: vpc.publicSubnets[0].subnetId,
+      allocationId: eip.attrAllocationId, // Use attrAllocationId to get the Allocation ID
+    });
+
+    // Add a route to the NAT Gateway for the first private subnet only
+    new ec2.CfnRoute(this, 'PrivateRoute', {
+      routeTableId: privateRouteTable.ref,
+      destinationCidrBlock: '0.0.0.0/0',
+      natGatewayId: natGateway.ref,
+    });
+
+    // Associate all private subnets with the private route table
+    vpc.isolatedSubnets.forEach((subnet, index) => {
       new ec2.CfnSubnetRouteTableAssociation(this, `PrivateSubnetAssociation${index}`, {
         subnetId: subnet.subnetId,
         routeTableId: privateRouteTable.ref,
@@ -68,6 +72,3 @@ export class MyVpcStack extends cdk.Stack {
     });
   }
 }
-
-const app = new cdk.App();
-new MyVpcStack(app, 'MyVpcStack');
